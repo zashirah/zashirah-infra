@@ -41,13 +41,18 @@ For secure authentication without long-lived credentials, use OpenID Connect (OI
              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
            },
            "StringLike": {
-             "token.actions.githubusercontent.com:sub": "repo:zashirah/zashirah-infra:*"
+             "token.actions.githubusercontent.com:sub": "repo:zashirah/zashirah-infra:ref:refs/heads/main"
            }
          }
        }
      ]
    }
    ```
+   
+   **Security Note:** This trust policy restricts access to the `main` branch only. For additional security:
+   - To allow pull requests: `"repo:zashirah/zashirah-infra:pull_request"`
+   - To allow specific branches: `"repo:zashirah/zashirah-infra:ref:refs/heads/BRANCH_NAME"`
+   - To allow all branches (less secure): `"repo:zashirah/zashirah-infra:*"`
 
 3. Attach necessary permissions to the role (e.g., CloudFormationFullAccess, IAMFullAccess)
 
@@ -70,7 +75,28 @@ If OIDC is not available, use long-lived access keys:
    - `AWS_SECRET_ACCESS_KEY`
    - `AWS_REGION` (optional, defaults to us-east-1)
 
-**Note:** You'll need to modify the workflow to use `aws-access-key-id` and `aws-secret-access-key` instead of `role-to-assume`.
+4. Modify the workflow file `.github/workflows/deploy-cloudformation.yml`:
+   
+   **Replace these lines (around line 82):**
+   ```yaml
+   - name: Configure AWS credentials
+     uses: aws-actions/configure-aws-credentials@v4
+     with:
+       role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+       aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+   ```
+   
+   **With:**
+   ```yaml
+   - name: Configure AWS credentials
+     uses: aws-actions/configure-aws-credentials@v4
+     with:
+       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+       aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+   ```
+
+**Security Warning:** Long-lived credentials are less secure than OIDC. Rotate keys regularly and use OIDC when possible.
 
 ## Stack Configuration
 
@@ -223,11 +249,30 @@ Use workflow dispatch with the `stack_name` input to deploy a single stack:
 
 ### Modify Deployment Strategy
 
-Edit `.github/workflows/deploy-cloudformation.yml`:
-- Change `max-parallel` to deploy multiple stacks concurrently
-- Modify `fail-fast` to stop all deployments on first failure
-- Add additional validation steps
-- Customize PR comment format
+Edit `.github/workflows/deploy-cloudformation.yml` to customize deployment behavior:
+
+**Deploy stacks concurrently (around line 67):**
+```yaml
+strategy:
+  matrix:
+    stack: ${{ fromJson(needs.prepare.outputs.stacks) }}
+  fail-fast: false
+  max-parallel: 3  # Changed from 1 to deploy up to 3 stacks at once
+```
+
+**Stop all deployments on first failure (around line 67):**
+```yaml
+strategy:
+  matrix:
+    stack: ${{ fromJson(needs.prepare.outputs.stacks) }}
+  fail-fast: true  # Changed from false
+  max-parallel: 1
+```
+
+**Add stack-specific timeouts (add to deploy job):**
+```yaml
+timeout-minutes: 30  # Add this line after "runs-on: ubuntu-latest"
+```
 
 ### Add Post-Deployment Actions
 
