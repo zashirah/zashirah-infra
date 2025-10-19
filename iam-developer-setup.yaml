@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Developer User and Role with MFA and Administrator Access'
+
+Parameters:
+  DeveloperUsername:
+    Type: String
+    Default: 'developer'
+    Description: 'Name of the IAM developer user'
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '^[a-zA-Z0-9+=,.@_-]+$'
+    ConstraintDescription: 'Must contain only alphanumeric characters and +=,.@_-'
+
+Resources:
+  # IAM User with Basic Management Permissions
+  DeveloperUser:
+    Type: 'AWS::IAM::User'
+    Properties:
+      UserName: !Ref DeveloperUsername
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/IAMUserChangePassword'
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+      Tags:
+        - Key: 'Purpose'
+          Value: 'Developer Access'
+        - Key: 'ManagedBy'
+          Value: 'CloudFormation'
+
+  # Access Key for Programmatic Access
+  DeveloperAccessKey:
+    Type: 'AWS::IAM::AccessKey'
+    Properties:
+      UserName: !Ref DeveloperUser
+      Status: 'Active'
+
+  # Policy to Allow Role Assumption with MFA
+  AssumeAdminRolePolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'AssumeAdminRoleWithMFA'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action: 'sts:AssumeRole'
+            Resource: !GetAtt AdminRole.Arn
+            Condition:
+              Bool:
+                'aws:MultiFactorAuthPresent': 'true'
+      Users:
+        - !Ref DeveloperUser
+
+  # Administrator Role with MFA Requirement
+  AdminRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'DeveloperAdminRole'
+      Description: 'Administrator role for developers with MFA requirement'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              AWS: !GetAtt DeveloperUser.Arn
+            Action: 'sts:AssumeRole'
+            Condition:
+              Bool:
+                'aws:MultiFactorAuthPresent': 'true'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+      MaxSessionDuration: 43200  # 12 hours
+      Tags:
+        - Key: 'Purpose'
+          Value: 'Developer Admin Access'
+        - Key: 'ManagedBy'
+          Value: 'CloudFormation'
+
+Outputs:
+  DeveloperUserArn:
+    Description: 'ARN of the IAM developer user'
+    Value: !GetAtt DeveloperUser.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DeveloperUserArn'
+
+  DeveloperUsername:
+    Description: 'Username of the IAM developer user'
+    Value: !Ref DeveloperUser
+    Export:
+      Name: !Sub '${AWS::StackName}-DeveloperUsername'
+
+  AccessKeyId:
+    Description: 'Access Key ID for programmatic access'
+    Value: !Ref DeveloperAccessKey
+    Export:
+      Name: !Sub '${AWS::StackName}-AccessKeyId'
+
+  SecretAccessKey:
+    Description: 'Secret Access Key (save securely - will not be shown again)'
+    Value: !GetAtt DeveloperAccessKey.SecretAccessKey
+    Export:
+      Name: !Sub '${AWS::StackName}-SecretAccessKey'
+
+  AdminRoleArn:
+    Description: 'ARN of the Administrator role'
+    Value: !GetAtt AdminRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AdminRoleArn'
+
+  AdminRoleName:
+    Description: 'Name of the Administrator role'
+    Value: !Ref AdminRole
+    Export:
+      Name: !Sub '${AWS::StackName}-AdminRoleName'
+
+  AssumeRoleCommand:
+    Description: 'AWS CLI command to assume the admin role with MFA'
+    Value: !Sub |
+      aws sts assume-role \
+        --role-arn ${AdminRole.Arn} \
+        --role-session-name admin-session \
+        --serial-number arn:aws:iam::${AWS::AccountId}:mfa/${DeveloperUser} \
+        --token-code <MFA-CODE>
