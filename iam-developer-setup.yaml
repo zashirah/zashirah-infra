@@ -95,8 +95,8 @@ Outputs:
       Name: !Sub '${AWS::StackName}-AccessKeyId'
 
   SecretAccessKeyNote:
-    Description: 'Secret Access Key - retrieve from AWS Console (IAM > Users > Security Credentials) or via AWS CLI immediately after stack creation'
-    Value: 'For security, the secret key is not exposed in outputs. Access it via AWS Console or describe-access-key API immediately after creation.'
+    Description: 'Secret Access Key - only available at creation time'
+    Value: 'For security, the secret key is not exposed in outputs. It is only shown once at creation. If lost, create a new access key via AWS Console (IAM > Users > Security Credentials).'
 
   AdminRoleArn:
     Description: 'ARN of the Administrator role'
