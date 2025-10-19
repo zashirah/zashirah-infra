@@ -21,6 +21,27 @@ The `iam-developer-setup.yaml` template provisions secure IAM resources for deve
 
 ### Deployment
 
+#### Automated Deployment (Recommended)
+
+The infrastructure is automatically deployed via GitHub Actions when changes are pushed or pull requests are opened:
+
+1. **Automatic Deployment**: Push changes to the `main` branch or create a pull request
+2. **Manual Deployment**: Use the workflow dispatch feature in GitHub Actions to deploy specific stacks
+3. **Configuration**: Stacks are defined in `.github/cloudformation-stacks.yaml`
+
+**Prerequisites:**
+- Set up AWS credentials as repository secrets:
+  - `AWS_ROLE_ARN`: ARN of the IAM role for GitHub Actions to assume (recommended: use OIDC)
+  - `AWS_REGION`: AWS region for deployment (default: us-east-1)
+
+The workflow automatically:
+- Validates CloudFormation templates
+- Handles both stack creation and updates (idempotent)
+- Provides detailed logs and outputs
+- Comments on PRs with deployment results
+
+#### Manual Deployment (Alternative)
+
 1. Deploy the CloudFormation stack:
    ```bash
    aws cloudformation create-stack \
@@ -59,6 +80,23 @@ The `iam-developer-setup.yaml` template provisions secure IAM resources for deve
      --token-code <MFA-CODE> \
      --profile zashirah-dev
    ```
+
+### Adding New Stacks
+
+To add a new CloudFormation stack to the automated deployment:
+
+1. Create your CloudFormation template file (e.g., `new-stack.yaml`)
+2. Add an entry to `.github/cloudformation-stacks.yaml`:
+   ```yaml
+   - name: stack-name
+     template: new-stack.yaml
+     capabilities:
+       - CAPABILITY_IAM  # if needed
+     parameters:
+       ParamKey: ParamValue
+     description: Description of the stack
+   ```
+3. Commit and push - the workflow will automatically deploy the new stack
 
 ### Cleanup
 
