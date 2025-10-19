@@ -1,0 +1,264 @@
+name: Deploy CloudFormation Stacks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - '.github/workflows/deploy-cloudformation.yml'
+      - '.github/cloudformation-stacks.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - '.github/workflows/deploy-cloudformation.yml'
+      - '.github/cloudformation-stacks.yaml'
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'Specific stack name to deploy (leave empty to deploy all)'
+        required: false
+        type: string
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Prepare Stack Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      stacks: ${{ steps.read-config.outputs.stacks }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read stack configuration
+        id: read-config
+        run: |
+          # Parse the YAML configuration file and output as JSON array
+          python3 << 'EOF'
+          import yaml
+          import json
+          import os
+          
+          with open('.github/cloudformation-stacks.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+          
+          stacks = config.get('stacks', [])
+          
+          # Filter by stack name if provided
+          stack_filter = os.environ.get('STACK_FILTER', '')
+          if stack_filter:
+              stacks = [s for s in stacks if s['name'] == stack_filter]
+          
+          print(f"::notice::Found {len(stacks)} stack(s) to deploy")
+          for stack in stacks:
+              print(f"::notice::  - {stack['name']}: {stack['template']}")
+          
+          # Output as JSON for matrix strategy
+          stacks_json = json.dumps(stacks)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"stacks={stacks_json}\n")
+          EOF
+        env:
+          STACK_FILTER: ${{ inputs.stack_name }}
+
+  deploy:
+    name: Deploy ${{ matrix.stack.name }}
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.stacks != '[]'
+    strategy:
+      matrix:
+        stack: ${{ fromJson(needs.prepare.outputs.stacks) }}
+      fail-fast: false
+      max-parallel: 1  # Deploy stacks sequentially to avoid conflicts
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Validate CloudFormation template
+        run: |
+          echo "Validating template: ${{ matrix.stack.template }}"
+          aws cloudformation validate-template \
+            --template-body file://${{ matrix.stack.template }}
+
+      - name: Check if stack exists
+        id: check-stack
+        run: |
+          STACK_NAME="${{ matrix.stack.name }}"
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "::notice::Stack $STACK_NAME exists - will update"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "::notice::Stack $STACK_NAME does not exist - will create"
+          fi
+        continue-on-error: true
+
+      - name: Prepare parameters
+        id: prepare-params
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          
+          # Parse parameters from matrix
+          params = json.loads(os.environ['STACK_PARAMS'])
+          
+          # Convert to CloudFormation parameter format
+          cf_params = []
+          for key, value in params.items():
+              cf_params.append(f"ParameterKey={key},ParameterValue={value}")
+          
+          params_string = " ".join(cf_params)
+          
+          # Output for use in next step
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"params={params_string}\n")
+          EOF
+        env:
+          STACK_PARAMS: ${{ toJson(matrix.stack.parameters) }}
+
+      - name: Prepare capabilities
+        id: prepare-capabilities
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          
+          # Parse capabilities from matrix
+          capabilities = json.loads(os.environ['STACK_CAPABILITIES'])
+          
+          # Convert to CloudFormation capabilities format
+          caps_string = " ".join(capabilities)
+          
+          # Output for use in next step
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"capabilities={caps_string}\n")
+          EOF
+        env:
+          STACK_CAPABILITIES: ${{ toJson(matrix.stack.capabilities) }}
+
+      - name: Deploy CloudFormation stack
+        id: deploy
+        run: |
+          STACK_NAME="${{ matrix.stack.name }}"
+          TEMPLATE_FILE="${{ matrix.stack.template }}"
+          PARAMS="${{ steps.prepare-params.outputs.params }}"
+          CAPABILITIES="${{ steps.prepare-capabilities.outputs.capabilities }}"
+          
+          echo "Deploying stack: $STACK_NAME"
+          echo "Template: $TEMPLATE_FILE"
+          echo "Parameters: $PARAMS"
+          echo "Capabilities: $CAPABILITIES"
+          
+          # Deploy using CloudFormation deploy command (handles create/update)
+          if [ -n "$PARAMS" ] && [ -n "$CAPABILITIES" ]; then
+            aws cloudformation deploy \
+              --stack-name "$STACK_NAME" \
+              --template-file "$TEMPLATE_FILE" \
+              --parameter-overrides $PARAMS \
+              --capabilities $CAPABILITIES \
+              --no-fail-on-empty-changeset
+          elif [ -n "$PARAMS" ]; then
+            aws cloudformation deploy \
+              --stack-name "$STACK_NAME" \
+              --template-file "$TEMPLATE_FILE" \
+              --parameter-overrides $PARAMS \
+              --no-fail-on-empty-changeset
+          elif [ -n "$CAPABILITIES" ]; then
+            aws cloudformation deploy \
+              --stack-name "$STACK_NAME" \
+              --template-file "$TEMPLATE_FILE" \
+              --capabilities $CAPABILITIES \
+              --no-fail-on-empty-changeset
+          else
+            aws cloudformation deploy \
+              --stack-name "$STACK_NAME" \
+              --template-file "$TEMPLATE_FILE" \
+              --no-fail-on-empty-changeset
+          fi
+          
+          echo "::notice::Stack $STACK_NAME deployed successfully"
+
+      - name: Get stack outputs
+        id: stack-outputs
+        run: |
+          STACK_NAME="${{ matrix.stack.name }}"
+          
+          echo "Fetching outputs for stack: $STACK_NAME"
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].Outputs' \
+            --output json | tee stack-outputs.json
+          
+          echo "::group::Stack Outputs"
+          cat stack-outputs.json | jq -r '.[] | "  \(.OutputKey): \(.OutputValue)"'
+          echo "::endgroup::"
+
+      - name: Comment on PR with outputs
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const outputs = JSON.parse(fs.readFileSync('stack-outputs.json', 'utf8'));
+            
+            let comment = `### ✅ Stack Deployed: \`${{ matrix.stack.name }}\`\n\n`;
+            comment += `**Template:** \`${{ matrix.stack.template }}\`\n\n`;
+            comment += `**Outputs:**\n\n`;
+            
+            if (outputs && outputs.length > 0) {
+              comment += '| Key | Value | Description |\n';
+              comment += '|-----|-------|-------------|\n';
+              outputs.forEach(output => {
+                const key = output.OutputKey;
+                const value = output.OutputValue.length > 100 ? 
+                  output.OutputValue.substring(0, 97) + '...' : 
+                  output.OutputValue;
+                const description = output.Description || '-';
+                comment += `| ${key} | ${value} | ${description} |\n`;
+              });
+            } else {
+              comment += '_No outputs available_\n';
+            }
+            
+            comment += `\n---\n_Deployed at ${new Date().toISOString()}_`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Report deployment failure
+        if: failure()
+        run: |
+          echo "::error::Failed to deploy stack ${{ matrix.stack.name }}"
+          
+          # Try to get stack events for debugging
+          STACK_NAME="${{ matrix.stack.name }}"
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" 2>/dev/null; then
+            echo "::group::Recent Stack Events"
+            aws cloudformation describe-stack-events \
+              --stack-name "$STACK_NAME" \
+              --max-items 20 \
+              --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED`].[LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
+              --output table || true
+            echo "::endgroup::"
+          fi
