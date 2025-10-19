@@ -40,8 +40,8 @@ The `iam-developer-setup.yaml` template provisions secure IAM resources for deve
 3. Get the SecretAccessKey:
    - The secret key is only available immediately after stack creation
    - If you miss capturing it, you'll need to create a new access key
-   - To create a new key: Navigate to IAM > Users > [your-username] > Security credentials
-   - **Important**: Delete the old access key before creating a new one to maintain security
+   - To rotate keys: Navigate to IAM > Users > [your-username] > Security credentials
+   - **Important**: Create the new key first, update your configuration, then delete the old key
 
 4. Configure AWS CLI with the access key:
    ```bash
