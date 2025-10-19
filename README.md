@@ -30,21 +30,26 @@ The `iam-developer-setup.yaml` template provisions secure IAM resources for deve
      --parameters ParameterKey=DeveloperUsername,ParameterValue=developer
    ```
 
-2. Retrieve the access credentials (save the SecretAccessKey securely):
+2. Retrieve the stack outputs (including AccessKeyId):
    ```bash
    aws cloudformation describe-stacks \
      --stack-name zashirah-iam-developer \
      --query 'Stacks[0].Outputs'
    ```
 
-3. Configure AWS CLI with the access key:
+3. Get the SecretAccessKey from the AWS Console:
+   - Navigate to IAM > Users > [your-username] > Security credentials
+   - The secret key is only shown once at creation time
+   - Alternatively, create a new access key if needed
+
+4. Configure AWS CLI with the access key:
    ```bash
    aws configure --profile zashirah-dev
    ```
 
-4. Enable MFA for the IAM user in the AWS Console
+5. Enable MFA for the IAM user in the AWS Console
 
-5. Assume the admin role with MFA (replace `<MFA-CODE>` with your current MFA token):
+6. Assume the admin role with MFA (replace `<MFA-CODE>` with your current MFA token):
    ```bash
    aws sts assume-role \
      --role-arn <AdminRoleArn-from-outputs> \

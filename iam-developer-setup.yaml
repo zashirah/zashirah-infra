@@ -94,11 +94,9 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-AccessKeyId'
 
-  SecretAccessKey:
-    Description: 'Secret Access Key (save securely - will not be shown again)'
-    Value: !GetAtt DeveloperAccessKey.SecretAccessKey
-    Export:
-      Name: !Sub '${AWS::StackName}-SecretAccessKey'
+  SecretAccessKeyNote:
+    Description: 'Secret Access Key - retrieve from AWS Console (IAM > Users > Security Credentials) or via AWS CLI immediately after stack creation'
+    Value: 'For security, the secret key is not exposed in outputs. Access it via AWS Console or describe-access-key API immediately after creation.'
 
   AdminRoleArn:
     Description: 'ARN of the Administrator role'
