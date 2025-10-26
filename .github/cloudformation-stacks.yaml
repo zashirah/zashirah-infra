@@ -1,0 +1,11 @@
+# Configuration file for CloudFormation stacks to be deployed
+# Add new stacks here as the infrastructure grows
+
+stacks:
+  - name: zashirah-iam-developer
+    template: iam-developer-setup.yaml
+    capabilities:
+      - CAPABILITY_NAMED_IAM
+    parameters:
+      DeveloperUsername: developer
+    description: IAM Developer User and Role with MFA
