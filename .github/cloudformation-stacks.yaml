@@ -9,3 +9,8 @@ stacks:
     parameters:
       DeveloperUsername: developer
     description: IAM Developer User and Role with MFA
+  - name: zashirah-s3-zasducklake
+    template: s3-zasducklake.yaml
+    capabilities: []
+    parameters: {}
+    description: S3 Bucket for Data Lake (zasducklake)
