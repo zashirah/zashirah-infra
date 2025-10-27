@@ -2,6 +2,30 @@
 
 Infrastructure as Code for the Zashirah project using AWS CloudFormation.
 
+## S3 Data Lake
+
+The `s3-zasducklake.yaml` template provisions a secure S3 bucket for data lake storage:
+
+### Resources Created
+
+- **S3 Bucket** (`zasducklake`): Data lake bucket with security best practices
+
+### Security Features
+
+- **Public Access Blocked**: All public access is blocked at the bucket level
+- **Versioning Enabled**: Object versioning is enabled to protect against accidental deletion
+- **Encryption**: Server-side encryption (AES256) is enabled by default
+- **Best Practices**: Follows AWS S3 security best practices for data protection
+
+### Usage
+
+The bucket is accessible via the AWS CLI, SDK, or Console. Use the outputs from the CloudFormation stack to retrieve the bucket name and ARN.
+
+Example CLI command:
+```bash
+aws s3 ls s3://zasducklake/
+```
+
 ## IAM Developer Setup
 
 The `iam-developer-setup.yaml` template provisions secure IAM resources for development access:

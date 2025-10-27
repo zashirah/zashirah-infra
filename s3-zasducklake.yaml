@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Bucket - zasducklake'
+
+Resources:
+  # S3 Bucket with security best practices
+  ZasDuckLakeBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'zasducklake'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: 'Enabled'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      Tags:
+        - Key: 'Purpose'
+          Value: 'Data Lake'
+        - Key: 'ManagedBy'
+          Value: 'CloudFormation'
+
+Outputs:
+  BucketName:
+    Description: 'Name of the S3 bucket'
+    Value: !Ref ZasDuckLakeBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+
+  BucketArn:
+    Description: 'ARN of the S3 bucket'
+    Value: !GetAtt ZasDuckLakeBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketArn'
+
+  BucketDomainName:
+    Description: 'Domain name of the S3 bucket'
+    Value: !GetAtt ZasDuckLakeBucket.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketDomainName'
+
+  BucketRegionalDomainName:
+    Description: 'Regional domain name of the S3 bucket'
+    Value: !GetAtt ZasDuckLakeBucket.RegionalDomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketRegionalDomainName'
